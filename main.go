@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 )
@@ -12,6 +13,17 @@ func main() {
 		colour   = makeRange(16, 231)
 		grey     = makeRange(232, 255)
 	)
+
+	slices.SortFunc(colour, func(a, b int) int {
+		aR, aG, aB := rgb(a)
+		bR, bG, bB := rgb(b)
+
+		return cmp.Or(
+			cmp.Compare(aR, bR),
+			cmp.Compare(aB, bB),
+			cmp.Compare(aG, bG),
+		)
+	})
 
 	for row := range slices.Chunk([]int{
 		standard[0], standard[len(standard)-1],
@@ -57,6 +69,10 @@ func makeRange(from, to int) []int {
 		s[i] = from + i
 	}
 	return s
+}
+
+func rgb(c int) (r, g, b int) {
+	return (c - 16) / 36, ((c - 16) % 36) / 6, (c - 16) % 6
 }
 
 func printColour(c int, fg bool) {
