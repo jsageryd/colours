@@ -4,7 +4,7 @@ import "fmt"
 
 func main() {
 	for _, t := range []bool{false, true} {
-		for n := 0; n <= 7; n++ {
+		for _, n := range []int{0, 7} {
 			printColour(n, t)
 		}
 	}
@@ -12,7 +12,24 @@ func main() {
 	fmt.Println()
 
 	for _, t := range []bool{false, true} {
-		for n := 8; n <= 15; n++ {
+		for _, n := range []int{8, 15} {
+			printColour(n, t)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println()
+
+	for _, t := range []bool{false, true} {
+		for n := 1; n <= 6; n++ {
+			printColour(n, t)
+		}
+	}
+
+	fmt.Println()
+
+	for _, t := range []bool{false, true} {
+		for n := 9; n <= 14; n++ {
 			printColour(n, t)
 		}
 	}
