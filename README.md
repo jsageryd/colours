@@ -4,6 +4,8 @@
 
 Prints xterm colours.
 
+<img src="img/colours.png" width="677px">
+
 ## Installation
 ```
 $ go install github.com/jsageryd/colours@latest
