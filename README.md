@@ -6,6 +6,17 @@ Prints xterm colours.
 
 <img src="img/colours.png" width="677px">
 
+## Usage
+By default colours are sorted by RGB value. Use flags for different sorting:
+
+```
+$ colours           # Default RGB sorting
+$ colours -hue      # Sort by hue (rainbow order) with greys separated
+$ colours -lum      # Sort by luminance (brightness)
+$ colours -sat      # Sort by saturation (vibrancy)
+$ colours -temp     # Sort by temperature (warm/cool)
+```
+
 ## Installation
 ```
 $ go install github.com/jsageryd/colours@latest
