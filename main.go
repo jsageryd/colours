@@ -12,6 +12,7 @@ import (
 func main() {
 	distance := flag.Int("dist", 0, "sort colours by distance from specified colour (e.g., -dist=21)")
 	greyscale := flag.Bool("grey", false, "sort colours by greyscale value")
+	harmonious := flag.Int("harm", 0, "show harmonious colours for specified colour (e.g., -harm=21)")
 	hue := flag.Bool("hue", false, "sort colours by hue")
 	luminance := flag.Bool("lum", false, "sort colours by brightness")
 	saturation := flag.Bool("sat", false, "sort colours by vibrancy")
@@ -23,6 +24,12 @@ func main() {
 	// Validate distance reference colour if specified
 	if *distance != 0 && (*distance < 16 || *distance > 231) {
 		fmt.Printf("Error: -dist requires a colour number between 16-231 (got %d)\n", *distance)
+		os.Exit(1)
+	}
+
+	// Validate harmonious reference colour if specified
+	if *harmonious != 0 && (*harmonious < 16 || *harmonious > 231) {
+		fmt.Printf("Error: -harm requires a colour number from 16 to 231 (got %d)\n", *harmonious)
 		os.Exit(1)
 	}
 
@@ -75,6 +82,10 @@ func main() {
 				cmp.Compare(-aS, -bS),
 			)
 		})
+	case *harmonious != 0:
+		// Show colour harmonies for specified reference colour
+		printColourHarmonies(*harmonious, colour)
+		return
 	case *hue:
 		// Hue-based sorting (rainbow order)
 		slices.SortFunc(colour, func(a, b int) int {
@@ -330,6 +341,213 @@ func colourTemperature(c int) float64 {
 	}
 }
 
+// findClosestColour finds the colour closest to the target hue.
+func findClosestColour(targetHue float64, colours []int, referenceColour int) int {
+	var bestColour int = -1
+	var bestDiff float64 = 360
+
+	for _, colour := range colours {
+		if colour == referenceColour {
+			continue
+		}
+
+		h, s, v := hsv(colour)
+
+		// Filter out colours that are too dark or too desaturated
+		if v < 0.3 || s < 0.3 {
+			continue
+		}
+
+		// Calculate circular distance between hues
+		diff := math.Min(math.Abs(h-targetHue), 360-math.Abs(h-targetHue))
+		if diff < bestDiff {
+			bestDiff = diff
+			bestColour = colour
+		}
+	}
+
+	return bestColour
+}
+
+// generateHarmonyScheme generates evenly spaced colours for a harmony scheme.
+func generateHarmonyScheme(referenceColour int, colours []int, numColours int) []int {
+	if numColours < 2 {
+		return []int{referenceColour}
+	}
+
+	refH, _, _ := hsv(referenceColour)
+	result := []int{referenceColour}
+	angleStep := 360.0 / float64(numColours)
+
+	// Find the closest colour for each position
+	for i := 1; i < numColours; i++ {
+		targetHue := math.Mod(refH+angleStep*float64(i), 360)
+		if closest := findClosestColour(targetHue, colours, referenceColour); closest != -1 {
+			result = append(result, closest)
+		}
+	}
+
+	return result
+}
+
+// generateMonochromeSequential generates colours with the same hue but
+// different saturation/brightness.
+func generateMonochromeSequential(referenceColour int, colours []int, numColours int) []int {
+	if referenceColour < 16 || referenceColour > 231 {
+		// Outside the 216-colour RGB cube, fallback to reference only
+		return []int{referenceColour}
+	}
+
+	// Get the hue of the reference colour
+	refH, _, _ := hsv(referenceColour)
+
+	var candidates []int
+
+	// Find all colours with similar hue (within ±5 degrees)
+	for _, colour := range colours {
+		h, _, _ := hsv(colour)
+
+		// Calculate circular distance between hues
+		hueDiff := math.Min(math.Abs(h-refH), 360-math.Abs(h-refH))
+
+		// Include colours with very similar hue
+		if hueDiff <= 5 {
+			candidates = append(candidates, colour)
+		}
+	}
+
+	// If we don't have enough candidates, expand the hue tolerance
+	if len(candidates) < numColours {
+		candidates = []int{}
+		for _, colour := range colours {
+			h, _, _ := hsv(colour)
+			hueDiff := math.Min(math.Abs(h-refH), 360-math.Abs(h-refH))
+			if hueDiff <= 15 {
+				candidates = append(candidates, colour)
+			}
+		}
+	}
+
+	// Sort candidates by brightness (value) to create a proper sequence
+	slices.SortFunc(candidates, func(a, b int) int {
+		_, _, aV := hsv(a)
+		_, _, bV := hsv(b)
+		return cmp.Compare(aV, bV) // Darkest to brightest
+	})
+
+	// Select up to numColours, ensuring we include the reference colour
+	result := []int{}
+	referenceIncluded := false
+
+	for _, colour := range candidates {
+		if len(result) >= numColours {
+			break
+		}
+		result = append(result, colour)
+		if colour == referenceColour {
+			referenceIncluded = true
+		}
+	}
+
+	// If reference wasn't included, replace the middle colour with it
+	if !referenceIncluded && len(result) > 0 {
+		midIndex := len(result) / 2
+		result[midIndex] = referenceColour
+
+		// Re-sort to maintain brightness order
+		slices.SortFunc(result, func(a, b int) int {
+			_, _, aV := hsv(a)
+			_, _, bV := hsv(b)
+			return cmp.Compare(aV, bV)
+		})
+	}
+
+	return result
+}
+
+// generateRGBGradient generates a 6-colour gradient by varying one RGB
+// component.
+func generateRGBGradient(referenceColour int, colours []int, numColours int) []int {
+	if referenceColour < 16 || referenceColour > 231 {
+		// Outside the 216-colour RGB cube, fallback to reference only
+		return []int{referenceColour}
+	}
+
+	// Extract RGB components from the reference colour
+	refR, refG, refB := rgb(referenceColour)
+
+	// Generate all 6 variations by varying the component with the highest value
+	// This creates the most noticeable brightness variation
+	maxComponent := math.Max(math.Max(float64(refR), float64(refG)), float64(refB))
+
+	var result []int
+
+	if float64(refR) == maxComponent {
+		// Vary red component from 0 to 5
+		for r := 0; r < 6; r++ {
+			colour := 16 + r*36 + refG*6 + refB
+			result = append(result, colour)
+		}
+	} else if float64(refG) == maxComponent {
+		// Vary green component from 0 to 5
+		for g := 0; g < 6; g++ {
+			colour := 16 + refR*36 + g*6 + refB
+			result = append(result, colour)
+		}
+	} else {
+		// Vary blue component from 0 to 5
+		for b := 0; b < 6; b++ {
+			colour := 16 + refR*36 + refG*6 + b
+			result = append(result, colour)
+		}
+	}
+
+	return result
+}
+
+// generateSplitComplementary generates base colour + 2 colours adjacent to its
+// complement.
+func generateSplitComplementary(referenceColour int, colours []int, numColours int) []int {
+	if referenceColour < 16 || referenceColour > 231 {
+		return []int{referenceColour}
+	}
+
+	refH, _, _ := hsv(referenceColour)
+	result := []int{referenceColour}
+
+	// Find complement's adjacent colours (complement ±30°)
+	complementHue := math.Mod(refH+180, 360)
+	splitHue1 := math.Mod(complementHue-30, 360)
+	splitHue2 := math.Mod(complementHue+30, 360)
+
+	// Find closest colours to the split-complement hues
+	if split1 := findClosestColour(splitHue1, colours, referenceColour); split1 != -1 {
+		result = append(result, split1)
+	}
+	if split2 := findClosestColour(splitHue2, colours, referenceColour); split2 != -1 {
+		result = append(result, split2)
+	}
+
+	return result
+}
+
+
+func findHarmoniousColours(referenceColour int, colours []int) map[string][]int {
+	harmony := make(map[string][]int)
+
+	// Generate each harmony scheme using the DRY approach
+	harmony["Complementary"] = generateHarmonyScheme(referenceColour, colours, 2)
+	harmony["Triadic"] = generateHarmonyScheme(referenceColour, colours, 3)
+	harmony["Tetradic"] = generateHarmonyScheme(referenceColour, colours, 4)
+	harmony["Pentadic"] = generateHarmonyScheme(referenceColour, colours, 5)
+	harmony["Hexadic"] = generateHarmonyScheme(referenceColour, colours, 6)
+	harmony["Split-complementary"] = generateSplitComplementary(referenceColour, colours, 3)
+	harmony["Monochrome sequential"] = generateMonochromeSequential(referenceColour, colours, 6)
+	harmony["RGB gradient"] = generateRGBGradient(referenceColour, colours, 6)
+
+	return harmony
+}
+
 func makeRange(from, to int) []int {
 	s := make([]int, to-from+1)
 	for i := range s {
@@ -340,6 +558,43 @@ func makeRange(from, to int) []int {
 
 func rgb(c int) (r, g, b int) {
 	return (c - 16) / 36, ((c - 16) % 36) / 6, (c - 16) % 6
+}
+
+func printColourHarmonies(referenceColour int, colours []int) {
+	// Get harmonious colours for reference
+	harmonies := findHarmoniousColours(referenceColour, colours)
+
+	fmt.Printf("Colour harmonies for colour %d:\n\n", referenceColour)
+
+	// Display each harmony type
+	harmonyOrder := []string{
+		"Complementary",
+		"Split-complementary",
+		"Triadic",
+		"Tetradic",
+		"Pentadic",
+		"Hexadic",
+		"Monochrome sequential",
+		"RGB gradient",
+	}
+
+	for _, harmonyType := range harmonyOrder {
+		colours := harmonies[harmonyType]
+		if len(colours) <= 1 {
+			continue // Skip if no harmonious colours found
+		}
+
+		fmt.Printf("%s (%d colours):\n", harmonyType, len(colours))
+
+		// Print colours in this harmony
+		for _, t := range []bool{false, true} {
+			for _, c := range colours {
+				printColour(c, t)
+			}
+		}
+		fmt.Println()
+		fmt.Println()
+	}
 }
 
 func printColour(c int, fg bool) {
